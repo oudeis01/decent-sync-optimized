@@ -4,25 +4,19 @@
 #include <vector>
 #include <portaudio.h>
 #include <atomic>
-#include <string>
-#include <fstream>
-#include <cmath>
-#include <stdexcept>
-#include <iostream>
-#include <algorithm>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-#include <cstring>
-#include <unistd.h>
-#include <csignal>
-#include <stdexcept>
-
+#include <deque>
 
 class AudioProcessor {
 public:
-    AudioProcessor(int sampleRate, int framesPerBuffer);
+    static constexpr int TARGET_SAMPLE_RATE = 16000;
+    static constexpr int SOURCE_SAMPLE_RATE = 44100;
+    static constexpr int N_FFT = 512;
+    static constexpr int HOP_LENGTH = 256;
+    static constexpr int N_MEL = 40;
+    static constexpr int N_MFCC = 10;
+    static constexpr float DURATION = 0.5f;
+    
+    AudioProcessor();
     ~AudioProcessor();
     
     void start();
@@ -33,13 +27,12 @@ public:
 
 private:
     PaStream* stream;
-    int sampleRate;
-    int framesPerBuffer;
+    std::deque<float> resampleBuffer;
+    std::vector<float> audioBuffer;
     std::vector<float> weights;
     std::vector<float> featureMeans;
     std::vector<float> featureStds;
     float intercept = 0.0f;
-    float threshold = 0.7f;
 
     static int audioCallback(const void* input, void* output,
                             unsigned long frameCount,
@@ -47,8 +40,8 @@ private:
                             PaStreamCallbackFlags statusFlags,
                             void* userData);
     
+    void resampleAndProcess(const float* input, size_t frames);
     std::vector<float> calculateMFCC(const std::vector<float>& audio) const;
-    void processAudio(const float* input);
 };
 
 #endif
