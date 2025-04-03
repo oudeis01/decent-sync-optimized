@@ -109,7 +109,7 @@ int main() {
                      std::ref(queue_mutex), 
                      std::ref(cv));
 
-    AudioProcessor audioProcessor(44100, 512);
+    AudioProcessor audioProcessor;
     try {
         audioProcessor.loadModel("model_weights.txt", "feature_scale.txt");
     } catch (const std::exception& e) {

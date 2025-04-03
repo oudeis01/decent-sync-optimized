@@ -5,6 +5,8 @@
 #include <portaudio.h>
 #include <atomic>
 #include <deque>
+#include <string>
+#include <cstddef>
 
 class AudioProcessor {
 public:
@@ -40,7 +42,7 @@ private:
                             PaStreamCallbackFlags statusFlags,
                             void* userData);
     
-    void resampleAndProcess(const float* input, size_t frames);
+    void resampleAndProcess(const float* input, std::size_t frames);
     std::vector<float> calculateMFCC(const std::vector<float>& audio) const;
 };
 
