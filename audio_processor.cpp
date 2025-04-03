@@ -3,6 +3,7 @@
 #include <fstream>
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
 
 // Mel filterbank matching librosa's implementation for 16kHz
 const std::vector<std::vector<float>> MEL_FILTERS = [] {
@@ -123,62 +124,79 @@ int AudioProcessor::audioCallback(const void* input, void* output,
     processor->resampleAndProcess(audioData, frameCount);
     return paContinue;
 }
+#include <samplerate.h>
 
-void AudioProcessor::resampleAndProcess(const float* input, size_t frames) {
-    // Simple linear resampling 44100 -> 16000
-    constexpr float ratio = static_cast<float>(TARGET_SAMPLE_RATE) / SOURCE_SAMPLE_RATE;
+void AudioProcessor::resampleAndProcess(const float* input, std::size_t frames) {
+    // Initialize resampler once
+    static SRC_STATE* resampler = [](){
+        int error;
+        SRC_STATE* s = src_new(SRC_SINC_FASTEST, 1, &error);
+        if(!s) throw std::runtime_error("Resampler init failed: " + 
+                                      std::string(src_strerror(error)));
+        return s;
+    }();
+
+    // Configure resampling parameters
+    constexpr double ratio = static_cast<double>(TARGET_SAMPLE_RATE) 
+                           / SOURCE_SAMPLE_RATE;
     
-    // Add new samples to resampling buffer
-    resampleBuffer.insert(resampleBuffer.end(), input, input + frames);
+    const double tmp = frames * ratio;
+    const long outputFrames = static_cast<long>(tmp) + 128;
     
-    // Process as much as we can
-    const size_t outputSamples = static_cast<size_t>(resampleBuffer.size() * ratio);
-    const size_t neededInput = static_cast<size_t>(outputSamples / ratio);
-    
-    std::vector<float> resampled;
-    resampled.reserve(outputSamples);
-    
-    for(size_t i=0; i<outputSamples; i++) {
-        const float idx = i / ratio;
-        const size_t low = static_cast<size_t>(idx);
-        const float frac = idx - low;
-        
-        if(low + 1 >= resampleBuffer.size()) break;
-        
-        const float sample = resampleBuffer[low] * (1 - frac) 
-                           + resampleBuffer[low + 1] * frac;
-        resampled.push_back(sample);
-    }
-    
-    // Remove processed samples
-    if(neededInput <= resampleBuffer.size()) {
-        resampleBuffer.erase(resampleBuffer.begin(), 
-                            resampleBuffer.begin() + neededInput);
+    // Temporary buffers
+    static std::vector<float> inputBuffer;
+    static std::vector<float> outputBuffer(outputFrames);
+
+    // Setup resampling data
+    SRC_DATA data;
+    data.data_in = input;
+    data.input_frames = frames;
+    data.data_out = outputBuffer.data();
+    data.output_frames = outputFrames;
+    data.src_ratio = ratio;
+    data.end_of_input = 0;
+
+    // Perform resampling
+    int error = src_process(resampler, &data);
+    if(error) {
+        throw std::runtime_error("Resampling failed: " + 
+                               std::string(src_strerror(error)));
     }
 
-    // Process resampled audio
-    audioBuffer.insert(audioBuffer.end(), resampled.begin(), resampled.end());
-    
+    // Store resampled audio
+    audioBuffer.insert(audioBuffer.end(), 
+                      outputBuffer.begin(), 
+                      outputBuffer.begin() + data.output_frames_gen);
+
     // Process in 0.5s chunks (16000 * 0.5 = 8000 samples)
     while(audioBuffer.size() >= 8000) {
         std::vector<float> chunk(audioBuffer.begin(), audioBuffer.begin() + 8000);
         audioBuffer.erase(audioBuffer.begin(), audioBuffer.begin() + 8000);
-        
+
+        // Calculate MFCCs
         auto mfcc = calculateMFCC(chunk);
-        
-        // Standardize features
-        for(int i=0; i<N_MFCC; i++) {
+
+        // Feature standardization
+        for(int i = 0; i < N_MFCC; ++i) {
             mfcc[i] = (mfcc[i] - featureMeans[i]) / featureStds[i];
         }
-        
-        // SVM decision
+
+        // SVM classification
         float score = intercept;
-        for(int i=0; i<N_MFCC; i++) {
+        for(int i = 0; i < N_MFCC; ++i) {
             score += mfcc[i] * weights[i];
         }
-        
+
+        // Sigmoid activation
         float probability = 1.0f / (1.0f + expf(-score));
         detectionFlag.store(probability > 0.7f);
+
+        // Debug output
+        std::cout << "MFCC:";
+        for(const auto& v : mfcc) std::cout << " " << v;
+        std::cout << "\nScore: " << score 
+                << " | Prob: " << probability 
+                << " | Detect: " << detectionFlag.load() << "\n";
     }
 }
 
@@ -226,6 +244,9 @@ std::vector<float> AudioProcessor::calculateMFCC(const std::vector<float>& audio
         }
         mfcc[n] = sum * sqrtf(2.0f/N_MEL);
     }
+    std::cout << "C++ MFCC: ";
+    for (const auto& val : mfcc) std::cout << val << " ";
+    std::cout << "\n";
 
     return mfcc;
 }

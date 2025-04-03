@@ -8,6 +8,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBLO REQUIRED liblo)
 include_directories(${LIBLO_INCLUDE_DIRS})
 
+find_library(SAMPLERATE_LIBRARY samplerate)
+
 find_library(PIGPIO_LIBRARY pigpio)
 if(NOT PIGPIO_LIBRARY)
     message(FATAL_ERROR "pigpio library not found!")
@@ -26,6 +28,7 @@ add_executable(motor_control ${SOURCES})
 target_link_libraries(motor_control
     ${PIGPIO_LIBRARY}
     ${LIBLO_LIBRARIES}
+    ${SAMPLERATE_LIBRARY}
     pthread
     rt
     m
