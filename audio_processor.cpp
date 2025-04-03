@@ -9,9 +9,10 @@
 #include <string>
 
 // MFCC constants matching Python training
-constexpr int N_FFT = 512;
-constexpr int HOP_LENGTH = 256;
-constexpr int N_MEL = 20;
+// for 44.1kHz
+constexpr int N_FFT = 1024;       // Increased window size
+constexpr int HOP_LENGTH = 512;   // 50% overlap
+constexpr int N_MEL = 40;         // More filters for wider frequency range
 constexpr int N_MFCC = 10;
 constexpr float SAMPLE_RATE = 44100.0f;
 constexpr float MEL_LOW = 20.0f;
