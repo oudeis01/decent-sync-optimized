@@ -5,6 +5,8 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
+#include <string>
 
 // MFCC constants matching Python training
 constexpr int N_FFT = 512;
