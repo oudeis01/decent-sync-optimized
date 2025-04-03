@@ -18,6 +18,10 @@
 
 extern std::atomic<bool> shutdown_flag;
 extern std::atomic<bool> worker_running;
+extern std::queue<Command> cmd_queue;
+extern std::mutex queue_mutex;
+extern std::condition_variable cv;
+extern std::atomic<int> cmd_index;
 
 void signalHandler(int signal);
 

@@ -7,6 +7,10 @@
 std::atomic<bool> shutdown_flag(false);
 std::atomic<bool> worker_running(true);
 std::atomic<bool> audio_detection(false);
+std::queue<Command> cmd_queue;
+std::mutex queue_mutex;
+std::condition_variable cv;
+std::atomic<int> cmd_index(0);
 
 void audioProcessingThread(AudioProcessor& processor) {
     while (!shutdown_flag) {
@@ -127,12 +131,9 @@ int main() {
 
     audioProcessor.stop();
     if (audio_thread.joinable()) audio_thread.join();
-    if (receiver.isRunning()) {
-        receiver.stop();
-    }
-    if (receiver.joinable()) {
-        receiver.join();
-    }
+
+    receiver.stop(true);
+    
     if (worker.joinable()) {
         worker.join();
     }
