@@ -107,7 +107,7 @@ int main() {
                      std::ref(queue_mutex), 
                      std::ref(cv));
 
-    AudioProcessor audioProcessor(16000, 512);
+    AudioProcessor audioProcessor(44100, 512);
     try {
         audioProcessor.loadModel("model_weights.txt", "feature_scale.txt");
     } catch (const std::exception& e) {
@@ -133,7 +133,7 @@ int main() {
     if (audio_thread.joinable()) audio_thread.join();
 
     receiver.stop(true);
-    
+
     if (worker.joinable()) {
         worker.join();
     }
