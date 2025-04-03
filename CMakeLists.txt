@@ -18,6 +18,7 @@ set(SOURCES
     motor.cpp
     receiver.cpp
     sender.cpp
+    audio_processor.cpp
 )
 
 add_executable(motor_control ${SOURCES})
