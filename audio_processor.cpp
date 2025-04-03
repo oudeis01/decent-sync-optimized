@@ -186,33 +186,51 @@ std::vector<float> AudioProcessor::calculateMFCC(const std::vector<float>& audio
 
     return mfcc;
 }
-
+std::vector<float> audioBuffer;
 void AudioProcessor::processAudio(const float* input) {
+
+
+    audioBuffer.insert(audioBuffer.end(), input, input + framesPerBuffer);
+    
+    // Process only when 0.5s of data is collected
+    if (audioBuffer.size() >= 22050) { // 44100Hz * 0.5s
+        std::vector<float> buffer(audioBuffer.begin(), audioBuffer.begin() + 22050);
+        audioBuffer.erase(audioBuffer.begin(), audioBuffer.begin() + 22050);
+        
+        // Calculate MFCCs
+        auto mfcc = calculateMFCC(buffer);
+        
+        // Pad to minimum FFT size
+        if(buffer.size() < N_FFT) {
+            buffer.resize(N_FFT, 0.0f);
+        }
+        else if(buffer.size() > N_FFT) {
+            buffer.resize(N_FFT);
+        }
+
+        // Calculate MFCCs
+        auto mfcc = calculateMFCC(buffer);
+
+        // Standardize features
+        for(int i = 0; i < N_MFCC; i++) {
+            mfcc[i] = (mfcc[i] - featureMeans[i]) / featureStds[i];
+        }
+
+        // SVM decision function
+        float score = intercept;
+        for(int i = 0; i < N_MFCC; i++) {
+            score += mfcc[i] * weights[i];
+        }
+
+        // Sigmoid probability
+        float probability = 1.0f / (1.0f + expf(-score));
+        detectionFlag.store(probability > 0.3f);
+
+        // Print results
+        std::cout << "MFCC: ";
+        for (auto& val : mfcc) std::cout << val << " ";
+        std::cout << "\nScore: " << score << " | Probability: " << probability << "\n";
+    }
     std::vector<float> buffer(input, input + framesPerBuffer);
     
-    // Pad to minimum FFT size
-    if(buffer.size() < N_FFT) {
-        buffer.resize(N_FFT, 0.0f);
-    }
-    else if(buffer.size() > N_FFT) {
-        buffer.resize(N_FFT);
-    }
-
-    // Calculate MFCCs
-    auto mfcc = calculateMFCC(buffer);
-
-    // Standardize features
-    for(int i = 0; i < N_MFCC; i++) {
-        mfcc[i] = (mfcc[i] - featureMeans[i]) / featureStds[i];
-    }
-
-    // SVM decision function
-    float score = intercept;
-    for(int i = 0; i < N_MFCC; i++) {
-        score += mfcc[i] * weights[i];
-    }
-
-    // Sigmoid probability
-    float probability = 1.0f / (1.0f + expf(-score));
-    detectionFlag.store(probability > 0.7f);
 }
