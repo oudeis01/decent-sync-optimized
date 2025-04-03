@@ -201,15 +201,15 @@ void AudioProcessor::processAudio(const float* input) {
         auto mfcc = calculateMFCC(buffer);
         
         // Pad to minimum FFT size
-        if(buffer.size() < N_FFT) {
-            buffer.resize(N_FFT, 0.0f);
-        }
-        else if(buffer.size() > N_FFT) {
-            buffer.resize(N_FFT);
-        }
+        // if(buffer.size() < N_FFT) {
+        //     buffer.resize(N_FFT, 0.0f);
+        // }
+        // else if(buffer.size() > N_FFT) {
+        //     buffer.resize(N_FFT);
+        // }
 
-        // Calculate MFCCs
-        auto mfcc = calculateMFCC(buffer);
+        // // Calculate MFCCs
+        // auto mfcc = calculateMFCC(buffer);
 
         // Standardize features
         for(int i = 0; i < N_MFCC; i++) {
