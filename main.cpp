@@ -23,6 +23,7 @@ void audioProcessingThread(AudioProcessor& processor) {
             audio_cmd.direction = true;
             audio_cmd.index = ++cmd_index;
             cmd_queue.push(audio_cmd);
+            std::cout << Color::rcvTag() << " AUDIO DETECTION -> ROTATE ADDED TO QUEUE\n";
             cv.notify_one();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -48,6 +49,7 @@ void commandWorker(Motor& motor,
         try {
             switch (cmd.type) {
                 case Command::ROTATE:
+                    std::cout << Color::runTag() << " Processing ROTATE from AUDIO\n";
                     std::cout << Color::runTag() << " Starting rotation - Steps: " 
                             << Color::value(cmd.steps) << ", Delay: " 
                             << Color::value(cmd.delayUs) << "μs\n";
