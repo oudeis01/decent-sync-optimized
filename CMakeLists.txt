@@ -29,6 +29,7 @@ target_link_libraries(motor_control
     pthread
     rt
     m
+    portaudio
 )
 
 target_compile_options(motor_control PRIVATE 
