@@ -13,7 +13,7 @@ constexpr int N_FFT = 512;
 constexpr int HOP_LENGTH = 256;
 constexpr int N_MEL = 20;
 constexpr int N_MFCC = 10;
-constexpr float SAMPLE_RATE = 16000.0f;
+constexpr float SAMPLE_RATE = 44100.0f;
 constexpr float MEL_LOW = 20.0f;
 constexpr float MEL_HIGH = 4000.0f;
 constexpr float PRE_EMPHASIS = 0.97f;
@@ -96,7 +96,7 @@ void AudioProcessor::start() {
     }
     
     PaStreamParameters inputParams;
-    inputParams.device = Pa_GetDefaultInputDevice();
+    inputParams.device = 1;
     inputParams.channelCount = 1;
     inputParams.sampleFormat = paFloat32;
     inputParams.suggestedLatency = Pa_GetDeviceInfo(inputParams.device)->defaultLowInputLatency;
