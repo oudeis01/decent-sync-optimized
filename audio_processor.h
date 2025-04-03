@@ -19,6 +19,7 @@
 #include <csignal>
 #include <stdexcept>
 
+
 class AudioProcessor {
 public:
     AudioProcessor(int sampleRate, int framesPerBuffer);

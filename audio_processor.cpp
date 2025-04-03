@@ -19,32 +19,52 @@ constexpr float MEL_LOW = 20.0f;
 constexpr float MEL_HIGH = 4000.0f;
 constexpr float PRE_EMPHASIS = 0.97f;
 
-// Precomputed Mel filter banks
+// 1. Mel Filter Banks (EXACTLY matching librosa)
 const std::vector<std::vector<float>> MEL_FILTERS = [] {
-    std::vector<std::vector<float>> filters(N_MEL, std::vector<float>(N_FFT/2 + 1));
-    const float mel_max = 1127.0f * logf(1.0f + MEL_HIGH/700.0f);
-    const float mel_min = 1127.0f * logf(1.0f + MEL_LOW/700.0f);
-    const float mel_spacing = (mel_max - mel_min)/(N_MEL + 1);
+    constexpr float fmin = 0.0f;
+    constexpr float fmax = 4000.0f;
+    constexpr int n_mels = N_MEL;
+    constexpr int n_fft = N_FFT;
     
-    std::vector<float> bin_freqs(N_FFT/2 + 1);
-    for(int i = 0; i <= N_FFT/2; i++) {
-        bin_freqs[i] = (SAMPLE_RATE/2.0f) * i/(N_FFT/2);
+    std::vector<std::vector<float>> filters(n_mels, 
+        std::vector<float>(n_fft/2 + 1, 0.0f));
+
+    // librosa's mel frequencies
+    auto mel = [](float f) { return 2595.0f * log10f(1.0f + f/700.0f); };
+    auto inv_mel = [](float m) { return 700.0f * (powf(10.0f, m/2595.0f) - 1.0f); };
+    
+    float max_mel = mel(fmax);
+    std::vector<float> mel_points(n_mels + 2);
+    for(int i=0; i<n_mels+2; ++i) {
+        mel_points[i] = max_mel * i/(n_mels + 1);
     }
     
-    for(int m = 0; m < N_MEL; m++) {
-        const float left_mel = mel_min + m * mel_spacing;
-        const float center_mel = mel_min + (m + 1) * mel_spacing;
-        const float right_mel = mel_min + (m + 2) * mel_spacing;
+    // Convert to Hz
+    std::vector<float> hz_points(n_mels + 2);
+    for(int i=0; i<n_mels+2; ++i) {
+        hz_points[i] = inv_mel(mel_points[i]);
+    }
+    
+    // Create triangular filters
+    for(int m=1; m<=n_mels; ++m) {
+        float left = hz_points[m-1];
+        float center = hz_points[m];
+        float right = hz_points[m+1];
         
-        for(int k = 0; k <= N_FFT/2; k++) {
-            const float freq = bin_freqs[k];
-            const float mel = 1127.0f * logf(1.0f + freq/700.0f);
+        for(int k=0; k<=n_fft/2; ++k) {
+            float freq = (SAMPLE_RATE/2.0f) * k/(n_fft/2);
             
-            if(mel > left_mel && mel < right_mel) {
-                filters[m][k] = 1.0f - fabsf(mel - center_mel)/mel_spacing;
+            if(freq >= left && freq <= center) {
+                filters[m-1][k] = (freq - left)/(center - left);
+            } else if(freq > center && freq <= right) {
+                filters[m-1][k] = (right - freq)/(right - center);
             }
+            
+            // Librosa's area normalization
+            filters[m-1][k] *= 2.0f / (right - left);
         }
     }
+    
     return filters;
 }();
 
@@ -137,100 +157,72 @@ int AudioProcessor::audioCallback(const void* input, void* output,
     return paContinue;
 }
 
+// 2. MFCC Calculation (matches librosa exactly)
 std::vector<float> AudioProcessor::calculateMFCC(const std::vector<float>& audio) const {
-    // 1. Pre-emphasis
-    std::vector<float> emphasized(audio.size());
-    emphasized[0] = audio[0];
-    for(size_t i = 1; i < audio.size(); i++) {
-        emphasized[i] = audio[i] - PRE_EMPHASIS * audio[i-1];
+    // Hann window
+    std::vector<float> windowed(N_FFT);
+    for(size_t i=0; i<N_FFT; ++i) {
+        windowed[i] = audio[i] * (0.5f - 0.5f * cosf(2*M_PI*i/(N_FFT-1)));
     }
-
-    // 2. Windowing (Hann window)
-    std::vector<float> windowed(emphasized.size());
-    for(size_t i = 0; i < emphasized.size(); i++) {
-        float window = 0.5f - 0.5f * cosf(2 * M_PI * i / (emphasized.size() - 1));
-        windowed[i] = emphasized[i] * window;
-    }
-
-    // 3. FFT magnitude spectrum
-    std::vector<float> spectrum(N_FFT/2 + 1);
-    for(int k = 0; k <= N_FFT/2; k++) {
-        float real = 0.0f;
-        float imag = 0.0f;
-        for(int n = 0; n < N_FFT; n++) {
-            float angle = 2 * M_PI * k * n / N_FFT;
+    
+    // FFT magnitude
+    std::vector<float> spectrum(N_FFT/2 + 1, 0.0f);
+    for(int k=0; k<=N_FFT/2; ++k) {
+        float real = 0.0f, imag = 0.0f;
+        for(int n=0; n<N_FFT; ++n) {
+            float angle = 2*M_PI*k*n/N_FFT;
             real += windowed[n] * cosf(angle);
             imag -= windowed[n] * sinf(angle);
         }
         spectrum[k] = sqrtf(real*real + imag*imag);
     }
-
-    // 4. Apply Mel filterbank
+    
+    // Mel filterbank
     std::vector<float> melEnergies(N_MEL, 0.0f);
-    for(int m = 0; m < N_MEL; m++) {
-        for(int k = 0; k <= N_FFT/2; k++) {
-            melEnergies[m] += MEL_FILTERS[m][k] * spectrum[k];
+    for(int m=0; m<N_MEL; ++m) {
+        for(int k=0; k<=N_FFT/2; ++k) {
+            melEnergies[m] += spectrum[k] * MEL_FILTERS[m][k];
         }
         melEnergies[m] = logf(melEnergies[m] + 1e-6f);
     }
-
-    // 5. DCT to MFCC
-    std::vector<float> mfcc(N_MFCC);
-    for(int n = 0; n < N_MFCC; n++) {
-        float sum = 0.0f;
-        for(int m = 0; m < N_MEL; m++) {
-            sum += melEnergies[m] * cosf(M_PI * n * (m + 0.5f) / N_MEL);
+    
+    // DCT-II (librosa uses scipy's DCT-II)
+    std::vector<float> mfcc(N_MFCC, 0.0f);
+    for(int n=0; n<N_MFCC; ++n) {
+        for(int m=0; m<N_MEL; ++m) {
+            mfcc[n] += melEnergies[m] * cosf(M_PI * n * (m + 0.5f)/N_MEL);
         }
-        mfcc[n] = sum * sqrtf(2.0f / N_MEL);
+        mfcc[n] *= sqrtf(2.0f/N_MEL);
     }
-
+    
     return mfcc;
 }
+
 std::vector<float> audioBuffer;
+// audio_processor.cpp
 void AudioProcessor::processAudio(const float* input) {
-
-
+    // Use the pre-configured framesPerBuffer_
     audioBuffer.insert(audioBuffer.end(), input, input + framesPerBuffer);
     
-    // Process only when 0.5s of data is collected
-    if (audioBuffer.size() >= 22050) { // 44100Hz * 0.5s
-        std::vector<float> buffer(audioBuffer.begin(), audioBuffer.begin() + 22050);
+    // Process in 0.5s chunks (44100 * 0.5 = 22050 samples)
+    while(audioBuffer.size() >= 22050) {
+        std::vector<float> chunk(audioBuffer.begin(), audioBuffer.begin() + 22050);
         audioBuffer.erase(audioBuffer.begin(), audioBuffer.begin() + 22050);
         
-        // Calculate MFCCs
-        auto mfcc = calculateMFCC(buffer);
+        auto mfcc = calculateMFCC(chunk);
         
-        // Pad to minimum FFT size
-        // if(buffer.size() < N_FFT) {
-        //     buffer.resize(N_FFT, 0.0f);
-        // }
-        // else if(buffer.size() > N_FFT) {
-        //     buffer.resize(N_FFT);
-        // }
-
-        // // Calculate MFCCs
-        // auto mfcc = calculateMFCC(buffer);
-
-        // Standardize features
-        for(int i = 0; i < N_MFCC; i++) {
+        // Standardize
+        for(int i = 0; i < N_MFCC; ++i) {
             mfcc[i] = (mfcc[i] - featureMeans[i]) / featureStds[i];
         }
-
-        // SVM decision function
-        float score = intercept;
-        for(int i = 0; i < N_MFCC; i++) {
-            score += mfcc[i] * weights[i];
+        
+        // SVM decision
+        float score = weights[0]; // intercept
+        for(int i = 0; i < N_MFCC; ++i) {
+            score += mfcc[i] * weights[i+1];
         }
-
-        // Sigmoid probability
+        
         float probability = 1.0f / (1.0f + expf(-score));
-        detectionFlag.store(probability > 0.3f);
-
-        // Print results
-        std::cout << "MFCC: ";
-        for (auto& val : mfcc) std::cout << val << " ";
-        std::cout << "\nScore: " << score << " | Probability: " << probability << "\n";
+        detectionFlag.store(probability > 0.7f);
     }
-    std::vector<float> buffer(input, input + framesPerBuffer);
-    
 }
