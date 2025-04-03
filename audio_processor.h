@@ -4,6 +4,20 @@
 #include <vector>
 #include <portaudio.h>
 #include <atomic>
+#include <string>
+#include <fstream>
+#include <cmath>
+#include <stdexcept>
+#include <iostream>
+#include <algorithm>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <cstring>
+#include <unistd.h>
+#include <csignal>
+#include <stdexcept>
 
 class AudioProcessor {
 public:
